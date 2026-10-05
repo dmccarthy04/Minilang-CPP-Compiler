@@ -3,21 +3,15 @@
 A small compiler and interpreter in C++. Type a program at the console (or give
 it a file); it checks the program, compiles it to an instruction table, and runs it.
 
-It combines three course assignments into one program:
-
 | Part | Files | Job |
 |---|---|---|
 | 1. Lexical analysis | `LexAnalyzer.h/.cpp` | source text -> token/lexeme pairs |
 | 2. Syntax analysis | `SyntaxAnalyzer.h/.cpp` | validates the tokens, builds the symbol table |
 | 3. Code generation + execution | `main.cpp` (`Compiler`, `Expr`, `Stmt` classes) | tokens -> instruction table -> run |
 
-The parts are used as originally written. `main()` at the bottom of
-`src/main.cpp` is the only new logic: it feeds each part's output to the next
-through in-memory streams instead of the files the separate programs used.
-
 ## Build and run
 
-Needs a C++20 compiler (the original code uses `std::map::contains`) and `make`.
+Needs a C++20 compiler and `make`.
 
 ```sh
 make
@@ -107,18 +101,8 @@ ARITHOP    -> + | - | * | / | %
 - Precedence, tightest first: `* / %`, `+ -`, comparisons, `and`, `or`.
 - `input(...)` reads one whitespace-delimited word per variable.
 
-## What was changed from the original files
 
-`docs/changes-from-original.diff` has the full diff. In summary:
-
-| File | Change |
-|---|---|
-| `LexAnalyzer.h`, `LexAnalyzer.cpp` | **None** (byte-identical). |
-| `SyntaxAnalyzer.cpp` | The class definition moved, unchanged, into the new `SyntaxAnalyzer.h` (it had no header, so `main.cpp` couldn't use it). The demo `main()` was removed. **One bug fix:** `inputstmt()` now consumes the closing `)` of `input(x)`; before, any program using `input` failed to parse. |
-| `SyntaxAnalyzer.h` | New: the include guard plus the original class definition. |
-| `main.cpp` | Everything up to and including `dump()` is unchanged. Some `#include`s and a small terminal-detection helper (`isatty`) were added at the top, and the old `main()` (which read `data12.txt` / `vars12.txt`) was replaced by the driver. |
-
-What the driver does around the original code:
+What the driver does:
 
 - Passes the lexer's output to the parser and compiler through string streams,
   and embeds the language's token/lexeme table (the old `lexemes.txt`).
@@ -131,30 +115,10 @@ What the driver does around the original code:
   splits words on spaces, so files saved on Windows or indented with tabs failed).
 - Catches exceptions during `run()` (e.g. `stoi` on a non-numeric `input`).
 
-## Known limitations of the original code (left as-is)
-
-These come from the original parts and were deliberately not changed:
-
-- **Parser:** string comparisons (`if (s == "x")`) and string concatenation
-  (`s = a + b;`) are rejected, since the parser's grammar predates the final
-  assignment's `STREXPR` rule. The code generator already evaluates them.
-- **Parser:** error messages give only the token/lexeme pair, with no line number.
-- **Code generator:** division or modulo by zero crashes the process.
-- **Code generator:** an integer expression that mixes in strings is not
-  supported; typing a non-number for an integer `input` gives `Runtime error: stoi`.
-- **Lexer:** escape sequences in strings are kept literally (`"\""` prints
-  with its backslashes).
 
 ## Tests
 
 `make test` runs every `.mini` file in `examples/` and `tests/cases/` and
 compares output and exit code with the files beside it (`.out`, optional `.in`
 for stdin, optional `.code`), then runs a set of interactive-mode sessions piped
-in. `tests/run_tests.sh --update` regenerates the `.out` files; review the diff
-before committing.
-
-## Credits
-
-Built as a group project for a Programming Languages course. Names from the
-original source headers: Daniel McCarthy and Jonathan Gomez (syntax analyzer);
-Aron Bartoszek, Adam Stahly, Daniel McCarthy and Nico Ruiz (code generation).
+in. `tests/run_tests.sh --update` regenerates the `.out` files.

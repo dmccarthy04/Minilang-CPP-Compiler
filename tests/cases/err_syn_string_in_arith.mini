@@ -1,0 +1,6 @@
+var
+  integer x;
+  string s;
+main
+  x = s + 1;
+end

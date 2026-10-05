@@ -1,0 +1,21 @@
+var
+  integer i;
+main
+  i = 1;
+  while (i <= 15) loop
+    if (i % 15 == 0) then
+      output("FizzBuzz")
+    else
+      if (i % 3 == 0) then
+        output("Fizz")
+      else
+        if (i % 5 == 0) then
+          output("Buzz")
+        else
+          output(i)
+        end if
+      end if
+    end if
+    i = i + 1;
+  end loop
+end

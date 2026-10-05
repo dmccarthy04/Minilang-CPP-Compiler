@@ -1,0 +1,8 @@
+var
+  integer a, b, sum;
+main
+  input(a)
+  input(b)
+  sum = a + b;
+  output(sum)
+end

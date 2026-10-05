@@ -1,0 +1,11 @@
+var
+  string a, b;
+main
+  a = "foo";
+  b = a;
+  output(a)
+  output(b)
+  b = "bar";
+  output(b)
+  output(a)
+end

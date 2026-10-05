@@ -1,0 +1,12 @@
+var
+  integer x;
+main
+  x = 1;
+  if (x == 1 or x == 2 and x == 3) then
+    output("and binds tighter")
+  else
+    output("WRONG")
+  end if
+  if (x == 1 and x == 2) then output("WRONG") else output("and false") end if
+  if (x == 2 or x == 3) then output("WRONG") else output("or false") end if
+end

@@ -1,0 +1,13 @@
+var
+  integer a, b;
+main
+  a = 3; b = 5;
+  if (a < b) then output("lt") end if
+  if (a <= b) then output("le") end if
+  if (b > a) then output("gt") end if
+  if (b >= a) then output("ge") end if
+  if (a != b) then output("ne") end if
+  if (a == b) then output("WRONG eq") else output("not eq") end if
+  if (a == 3) then output("eq") end if
+  if (b < a) then output("WRONG") end if
+end

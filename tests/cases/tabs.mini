@@ -1,0 +1,6 @@
+var
+	integer x;
+main
+	x = 7;
+	output(x)
+end

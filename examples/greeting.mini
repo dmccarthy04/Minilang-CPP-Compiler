@@ -1,0 +1,15 @@
+var
+  string name;
+  integer age;
+
+main
+  input(name)
+  input(age)
+  output("Hello,")
+  output(name)
+  if (age >= 18) then
+    output("You are an adult.")
+  else
+    output("You are a minor.")
+  end if
+end

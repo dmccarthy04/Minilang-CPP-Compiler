@@ -1,0 +1,8 @@
+var
+  integer n;
+  string s;
+main
+  output(n)
+  output(s)
+  output("done")
+end

@@ -1,0 +1,393 @@
+# Changes from the original course files (line endings normalised for readability)
+# LexAnalyzer.h and LexAnalyzer.cpp are byte-identical to the originals and not listed.
+
+--- original/main.cpp
++++ src/main.cpp
+@@ -8,6 +8,17 @@
+ #include <map>
+ #include <stack>
+ #include <string>
++#include <sstream>
++#include "LexAnalyzer.h"
++#include "SyntaxAnalyzer.h"
++
++#ifdef _WIN32
++#include <io.h>
++static bool stdinIsTerminal() { return _isatty(0) != 0; }
++#else
++#include <unistd.h>
++static bool stdinIsTerminal() { return isatty(0) != 0; }
++#endif
+ using namespace std;
+ 
+ class Expr;
+@@ -819,15 +830,282 @@
+     }
+ }
+ 
+-int main() {
+-    ifstream source("data12.txt");
+-    ifstream symbols("vars12.txt");
+-    if (!source || !symbols) {
+-        exit(-1);
++// ---------------------------------------------------------------------------
++// Added when the three parts were combined into one program.
++//
++// The original main() read data12.txt and vars12.txt. This driver instead
++// chains the three parts in memory:
++//
++//   source text -> LexAnalyzer -> SyntaxAnalyzer -> Compiler -> run
++//
++// LexAnalyzer, SyntaxAnalyzer and the Compiler classes above are used exactly
++// as they were written; the code below only connects them.
++// ---------------------------------------------------------------------------
++
++// The language's token/lexeme pairs (the contents of lexemes.txt).
++static const char *LEXEME_TABLE = R"(t_and and
++t_or or
++t_not not
++t_true true
++t_false false
++t_input input
++t_output output
++t_integer integer
++t_string string
++t_var var
++t_if if
++t_then then
++t_else else
++t_while while
++t_loop loop
++t_end end
++t_main main
++s_assign =
++s_comma ,
++s_colon :
++s_lparen (
++s_rparen )
++s_semi ;
++s_lt <
++s_le <=
++s_gt >
++s_ge >=
++s_eq ==
++s_ne !=
++s_plus +
++s_minus -
++s_mult *
++s_div /
++s_mod %
++)";
++
++enum ExitCode { OK = 0, LEX_ERROR = 1, SYNTAX_ERROR = 2, RUNTIME_ERROR = 4, USAGE = 64 };
++
++// The scanner and parser report on cout. The driver collects that text so it
++// can decide what to show: errors always, progress messages only with -v.
++class CaptureCout {
++private:
++    ostringstream buffer;
++    streambuf *saved;
++public:
++    CaptureCout() : saved(cout.rdbuf(buffer.rdbuf())) {}
++    ~CaptureCout() { cout.rdbuf(saved); }
++    string str() const { return buffer.str(); }
++};
++
++// The scanner only separates words at spaces, so drop carriage returns
++// (files saved on Windows) and treat tabs as spaces.
++string normalizeSource(const string &code) {
++    string out;
++    for (char c : code) {
++        if (c == '\r') continue;
++        out += (c == '\t') ? ' ' : c;
+     }
+-    Compiler c(source, symbols);
++    return out;
++}
++
++// The Compiler keeps its state in global variables, so clear them before
++// compiling each program.
++void resetCompilerState() {
++    for (Stmt *s : insttable) {
++        delete s;
++    }
++    insttable.clear();
++    tokens.clear();
++    lexemes.clear();
++    symboltable.clear();
++    symbolvalues.clear();
++    pc = 0;
++}
++
++// Runs one program (as source text) through all three parts.
++int processProgram(const string &code, bool verbose) {
++    // ---- part 1: lexical analysis
++    istringstream table(LEXEME_TABLE);
++    LexAnalyzer lexer(table);
++    istringstream source(normalizeSource(code));
++    ostringstream pairs;
++    string lexMessages;
++    {
++        CaptureCout capture;
++        lexer.scanFile(source, pairs);
++        lexMessages = capture.str();
++    }
++    string tokenText = pairs.str();
++    if (tokenText.empty()) {
++        cerr << "Error. No data received." << endl;
++        return LEX_ERROR;
++    }
++    // a failed scan ends the pair list with an "ERROR <message>" pair
++    size_t errPos = (tokenText.rfind("ERROR ", 0) == 0) ? 0 : tokenText.find("\nERROR ");
++    if (errPos != string::npos) {
++        if (errPos > 0) errPos++;
++        size_t eol = tokenText.find('\n', errPos);
++        cerr << "Lexical error: " << tokenText.substr(errPos + 6, eol - errPos - 6) << endl;
++        return LEX_ERROR;
++    }
++    if (verbose) {
++        cout << lexMessages << tokenText;
++    }
++
++    // ---- part 2: syntax analysis
++    istringstream pairsIn(tokenText);
++    SyntaxAnalyzer parser(pairsIn);
++    string parseMessages;
++    bool valid;
++    {
++        CaptureCout capture;
++        valid = parser.parse();
++        parseMessages = capture.str();
++    }
++    if (!valid) {
++        if (parseMessages.empty()) {
++            cerr << "Error, the program ended before it was complete" << endl;
++        } else {
++            cerr << parseMessages;
++        }
++        return SYNTAX_ERROR;
++    }
++    if (verbose) {
++        cout << parseMessages;
++    }
++
++    // The parser prints its symbol table as "name : type" lines. The Compiler
++    // reads "name type" lines (what vars12.txt contained).
++    istringstream parsed(parseMessages);
++    ostringstream symbolLines;
++    string line;
++    bool inTable = false;
++    while (getline(parsed, line)) {
++        if (line == "Symbol Table:") {
++            inTable = true;
++        } else if (inTable) {
++            size_t sep = line.find(" : ");
++            if (sep != string::npos) {
++                symbolLines << line.substr(0, sep) << ' ' << line.substr(sep + 3) << '\n';
++            }
++        }
++    }
++
++    // ---- part 3: code generation and execution
++    resetCompilerState();
++    struct ClearOnExit {
++        ~ClearOnExit() { resetCompilerState(); }
++    } clearOnExit;
++    istringstream compileIn(tokenText);
++    istringstream symbolsIn(symbolLines.str());
++    Compiler c(compileIn, symbolsIn);
+     c.compile();
+-    dump();
+-    c.run();
+-    return 0;
++    if (verbose) {
++        dump();
++    }
++    try {
++        c.run();
++    } catch (const exception &e) {
++        cerr << "Runtime error: " << e.what() << endl;
++        return RUNTIME_ERROR;
++    }
++    return OK;
++}
++
++static string trim(const string &s) {
++    size_t b = s.find_first_not_of(" \t\r\n");
++    if (b == string::npos) return "";
++    size_t e = s.find_last_not_of(" \t\r\n");
++    return s.substr(b, e - b + 1);
++}
++
++// Type a program at the console, then a line containing only "run" to compile
++// and execute it. A mistake does not end the session. Values for input(...)
++// are read from the lines typed after "run".
++int interactiveSession(bool verbose) {
++    const bool terminal = stdinIsTerminal();
++    if (terminal) {
++        cout << "minilang interactive mode\n"
++                "  Type a program, then a line with only 'run' to compile and execute it.\n"
++                "  Type 'quit' or press Ctrl-D to exit.\n\n";
++    }
++    int lastResult = OK;
++    bool endOfInput = false;
++    while (!endOfInput) {
++        string code, line;
++        bool hasCode = false;
++        int lineNo = 1;
++        while (true) {
++            if (terminal) cout << lineNo << "> " << flush;
++            if (!getline(cin, line)) {
++                endOfInput = true;
++                if (terminal) cout << '\n';
++                break;
++            }
++            string word = trim(line);
++            if (!hasCode && (word == "quit" || word == "exit")) return lastResult;
++            if (word == "run") break;
++            code += line + '\n';
++            if (!word.empty()) hasCode = true;
++            ++lineNo;
++        }
++        if (!hasCode) continue;
++
++        if (terminal) cout << "---- running ----\n";
++        lastResult = processProgram(code, verbose);
++        // input(...) reads with cin >>, which leaves the end of the typed
++        // line behind; discard it so it is not mistaken for the next program
++        while (cin.rdbuf()->in_avail() > 0 && (cin.peek() == '\n' || cin.peek() == '\r')) {
++            cin.get();
++        }
++        if (terminal) cout << '\n';
++    }
++    return lastResult;
++}
++
++void printUsage(ostream &os) {
++    os << "Usage: minilang [-v] [source-file]\n"
++          "\n"
++          "With a source file, compiles and runs it.\n"
++          "With no source file, starts an interactive session: type a program,\n"
++          "then a line containing only 'run' to compile and execute it.\n"
++          "Type 'quit' (or press Ctrl-D) to leave the session.\n"
++          "\n"
++          "  -v, --verbose   also show what each part produces: the token/lexeme\n"
++          "                  pairs, the parser's symbol table, and the instruction table\n"
++          "  -h, --help      show this help\n"
++          "\n"
++          "Exit codes: 0 ok, 1 lexical error, 2 syntax error, 4 runtime error\n";
++}
++
++int main(int argc, char *argv[]) {
++    ios::sync_with_stdio(false);
++    bool verbose = false;
++    string sourcePath;
++    for (int i = 1; i < argc; i++) {
++        string arg = argv[i];
++        if (arg == "-h" || arg == "--help") {
++            printUsage(cout);
++            return OK;
++        } else if (arg == "-v" || arg == "--verbose") {
++            verbose = true;
++        } else if (!arg.empty() && arg[0] == '-') {
++            cerr << "minilang: unknown option '" << arg << "'" << endl;
++            printUsage(cerr);
++            return USAGE;
++        } else if (sourcePath.empty()) {
++            sourcePath = arg;
++        } else {
++            cerr << "minilang: only one source file may be given" << endl;
++            return USAGE;
++        }
++    }
++
++    if (sourcePath.empty()) {
++        return interactiveSession(verbose);
++    }
++    ifstream file(sourcePath);
++    if (!file) {
++        cerr << "minilang: cannot open '" << sourcePath << "'" << endl;
++        return USAGE;
++    }
++    stringstream buffer;
++    buffer << file.rdbuf();
++    return processProgram(buffer.str(), verbose);
+ }
+
+--- original/SyntaxAnalyzer.cpp
++++ src/SyntaxAnalyzer.cpp
+@@ -5,50 +5,7 @@
+ #include <map>
+ #include <vector>
+ using namespace std;
+-
+-class SyntaxAnalyzer {
+-private:
+-    vector<string> lexemes;
+-    vector<string> tokens;
+-    vector<string>::iterator lexitr;
+-    vector<string>::iterator tokitr;
+-    // map of variables and their datatype
+-    // i.e. sum t_integer
+-    map<string, string> symboltable;
+-
+-    // other private methods
+-    bool vdec();
+-    int vars();
+-    bool stmtlist();
+-    int stmt();
+-    bool ifstmt();
+-    bool elsepart();
+-    bool whilestmt();
+-    bool assignstmt();
+-    bool inputstmt();
+-    bool outputstmt();
+-    bool logicop();
+-    bool type();
+-    bool numterm();
+-    bool logexpr();
+-    bool relexpr();
+-    bool arithexpr();
+-    bool strterm();
+-    bool relop();
+-    bool arithop();
+-
+-public:
+-    SyntaxAnalyzer(istream& infile);
+-    // pre: 1st parameter consists of an open file containing a source code's
+-    // valid scanner/lexical analyzer output.  This data must be in the form: token : lexeme
+-    // post: the vectors have been populated
+-    bool parse();
+-    // pre: none
+-    // post: The lexemes/tokens have been parsed.
+-    // If an error occurs, a message prints indicating the token/lexeme pair
+-    // that caused the error.
+-    // If no error, vectors contain syntactically correct source code
+-};
++#include "SyntaxAnalyzer.h"
+ 
+ SyntaxAnalyzer::SyntaxAnalyzer(istream& infile) {
+     string tok, lex, line;
+@@ -406,6 +363,7 @@
+             if (symboltable.contains(*lexitr)) {
+                 tokitr++; lexitr++;
+                 if (tokitr != tokens.end() && *tokitr == "s_rparen") {
++                    tokitr++; lexitr++;
+                     return true;
+                 }
+             }
+@@ -442,10 +400,3 @@
+     }
+     return false;
+ }
+-
+-int main() {
+-    ifstream infile("sourcelexemes.txt");
+-    SyntaxAnalyzer sa(infile);
+-    sa.parse();
+-    return 0;
+-}
+
+# New file: src/SyntaxAnalyzer.h  (lines between the first and last line of the class are copied verbatim
+# from SyntaxAnalyzer.cpp; only the include guard was added)
+(identical)

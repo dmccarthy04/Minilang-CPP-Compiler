@@ -1,0 +1,6 @@
+var
+  string s;
+main
+  input(s)
+  output(s)
+end

@@ -1,0 +1,2 @@
+var integer x,y;
+main x=1;y=x+2*3;if(y>=7)then output(y)end if end

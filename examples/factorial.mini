@@ -1,0 +1,13 @@
+var
+  integer n, i, result;
+
+main
+  n = 10;
+  i = 1;
+  result = 1;
+  while (i <= n) loop
+    result = result * i;
+    i = i + 1;
+  end loop
+  output(result)
+end
